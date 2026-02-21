@@ -150,6 +150,7 @@ def handle_message(message):
                 bot.reply_to(message, "✅ King Rank установлен успешно.")
                 # Reset user state after completing the task
                 user_states[user_id] = {"step": "await_email"}  # Reset to the email step
+                bot.reply_to(message, "📧 ⚫️ВВЕДИ @GMAIL⚫️")  # Ask for email again
             else:
                 bot.reply_to(message, "❌ Не удалось установить King Rank.")
         else:
