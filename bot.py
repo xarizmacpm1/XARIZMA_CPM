@@ -2,6 +2,8 @@ import os
 import requests
 import json
 import telebot
+from flask import Flask
+from threading import Thread
 
 # --- Game Service Configuration ---
 FIREBASE_API_KEY = 'AIzaSyBW1ZbMiUeDZHYUO2bY8Bfnf5rRgrQGPTM'
@@ -154,7 +156,21 @@ def handle_message(message):
         # Reset user state after completing the task
         del user_states[user_id]
 
-# Start bot polling
+# Flask app for Render
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
 if __name__ == "__main__":
-    print("🚀 Запуск бота...")
-    bot.polling(none_stop=True)
+    from threading import Thread
+    t = Thread(target=bot.polling, args=(None,))
+    t.start()
+    
+    # Start Flask server
+    run_flask()
