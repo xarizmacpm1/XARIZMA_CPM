@@ -156,6 +156,9 @@ def handle_message(message):
         # Reset user state after completing the task
         del user_states[user_id]
 
+        # Ask for email again after the task is complete
+        bot.reply_to(message, "📧 ⚫️ВВЕДИ @GMAIL⚫️")
+
 # Flask app for Render
 app = Flask(__name__)
 
